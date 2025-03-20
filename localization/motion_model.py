@@ -8,8 +8,12 @@ class MotionModel:
         # Do any precomputation for the motion
         # model here.
 
-        pass
+        self.node = node
 
+        node.declare_parameter("deterministic", "default")
+        self.deterministic = node.get_parameter("deterministic").get_parameter_value().bool_value
+
+        self.get_logger().info(f"Deterministic Mode: {self.deterministic}")
         ####################################
 
     def evaluate(self, particles, odometry):
@@ -33,6 +37,10 @@ class MotionModel:
 
         ####################################
         # TODO
+        dx, dy, dtheta = odometry
+        sigma_x = 0 # TODO
+        sigma_y = 0 # TODO
+        sigma_theta = 0 # TODO
 
         raise NotImplementedError
 
