@@ -1,4 +1,4 @@
-
+import numpy as np
 
 class MotionModel:
 
@@ -41,6 +41,23 @@ class MotionModel:
         sigma_x = 0 # TODO
         sigma_y = 0 # TODO
         sigma_theta = 0 # TODO
+        for particle in particles:
+            if not self.deterministic:
+                x_noise = np.random.normal(0, sigma_x)
+                y_noise = np.random.normal(0 ,sigma_y)
+                theta_noise = np.random.normal(0 ,sigma_theta)
+            else:
+                x_noise = 0
+                y_noise = 0
+                theta_noise = 0
+            x, y, theta = particle
+            
+            
+
+
+
+
+
 
         raise NotImplementedError
 
