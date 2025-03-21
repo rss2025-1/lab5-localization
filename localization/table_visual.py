@@ -33,14 +33,14 @@ def p_z_given_xm(z, d, sigma, z_max, epsilon,
 
 # 3D sensor model plot function
 def plot_sensor_model_3d(
-    sigma=0.2,
+    sigma=8,
     z_max=10.0,
     epsilon=0.01,
     table_width=200,
-    alpha_hit=0.7,
-    alpha_short=0.1,
-    alpha_max=0.1,
-    alpha_rand=0.1
+    alpha_hit=0.74,
+    alpha_short=0.07,
+    alpha_max=0.07,
+    alpha_rand=0.12
 ):
     # Validate alpha sum
     total_alpha = alpha_hit + alpha_short + alpha_max + alpha_rand
@@ -62,7 +62,12 @@ def plot_sensor_model_3d(
                                    alpha_hit, alpha_short, alpha_max, alpha_rand)
             if P[i, j] > 1:
                 print("Warning: Probability greater than 1 detected. Check parameters.")
-                
+    
+    # Normalize each column (for each d) so that they sum to 1
+    col_sums = np.sum(P, axis=0)
+    # Avoid division by zero; if a column sums to 0, leave it as is
+    col_sums[col_sums == 0] = 1
+    P = P / col_sums[None, :]
 
     # Plot 3D surface
     fig = plt.figure(figsize=(10, 7))
