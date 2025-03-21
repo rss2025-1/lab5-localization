@@ -86,8 +86,56 @@ class SensorModel:
         returns:
             No return type. Directly modify `self.sensor_model_table`.
         """
+        # Format: self.sensor_model_table[measured_distance, ground_truth]
 
-        raise NotImplementedError
+        # Check that the alpha values sum to 1
+        total = self.alpha_hit + self.alpha_short + self.alpha_max + self.alpha_rand
+        if not np.isclose(total, 1.0):
+            raise ValueError("Alpha values must sum to 1.")
+        
+        self.z_max = 10
+        self.epsilon = 0.01
+        
+        def p_hit(z, d):
+            """Case 1: Gaussian centered on expected distance d."""
+            if 0 <= z <= self.z_max:
+                return (1.0 / (np.sqrt(2 * np.pi) * self.sigma_hit)) * np.exp(-0.5 * ((z - d) / self.sigma_hit) ** 2)
+            return 0.0
+
+        def p_short(z, d):
+            """Case 2: Short measurement (unexpected obstacle)."""
+            if 0 <= z <= d and d != 0:
+                return (2.0 / d) * (1 - (z / d))
+            return 0.0
+
+        def p_max(z):
+            """Case 3: Max range (missed detection)."""
+            if self.z_max - self.epsilon <= z <= self.z_max:
+                return 1.0 / self.epsilon
+            return 0.0
+
+        def p_rand(z):
+            """Case 4: Random measurement (noise, unknown event)."""
+            if 0 <= z <= self.z_max:
+                return 1.0 / self.z_max
+            return 0.0
+
+        def likelihood(z, d):
+            """Total weighted mixture model for a single range measurement."""
+            return (
+                self.alpha_hit * self.p_hit(z, d) +
+                self.alpha_short * self.p_short(z, d) +
+                self.alpha_max * self.p_max(z) +
+                self.alpha_rand * self.p_rand(z)
+            )
+
+        for measured_distance in range(self.table_width):
+            for ground_truth in range(self.table_width):
+                measured_distance_scaled = measured_distance * (self.z_max / self.table_width) # normalize
+                ground_truth_scaled = ground_truth * (self.z_max / self.table_width) # normalize
+                self.sensor_model_table[measured_distance, ground_truth] = likelihood(measured_distance_scaled, ground_truth_scaled)
+
+        
 
     def evaluate(self, particles, observation):
         """
@@ -155,3 +203,5 @@ class SensorModel:
         self.map_set = True
 
         print("Map initialized")
+
+

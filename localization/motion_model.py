@@ -39,8 +39,6 @@ class MotionModel:
 
         dx, dy, dtheta = odometry
 
-        
-
         sigma_x = 0 # TODO
         sigma_y = 0 # TODO
         sigma_theta = 0 # TODO
@@ -56,6 +54,7 @@ class MotionModel:
                 x_noise = 0
                 y_noise = 0
                 theta_noise = 0
+
             x, y, theta = particle
             dx_world = x * np.cos(particle[-1]) - y * np.sin(particle[-1])
             dy_world = x * np.sin(particle[-1]) + y * np.cos(particle[-1])
