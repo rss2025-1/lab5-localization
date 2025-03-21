@@ -35,12 +35,18 @@ class MotionModel:
                 same size
         """
 
-        ####################################
-        # TODO
+
+
         dx, dy, dtheta = odometry
+
+        
+
         sigma_x = 0 # TODO
         sigma_y = 0 # TODO
         sigma_theta = 0 # TODO
+
+        updated_particles = []
+
         for particle in particles:
             if not self.deterministic:
                 x_noise = np.random.normal(0, sigma_x)
@@ -51,14 +57,16 @@ class MotionModel:
                 y_noise = 0
                 theta_noise = 0
             x, y, theta = particle
+            dx_world = x * np.cos(particle[-1]) - y * np.sin(particle[-1])
+            dy_world = x * np.sin(particle[-1]) + y * np.cos(particle[-1])
             
-            
+            updated_particle = [
+                x + dx_world + x_noise,
+                y + dy_world + y_noise,
+                theta + dtheta + theta_noise
+            ]
 
+            updated_particles.append(updated_particle)
 
+        return np.array(updated_particles)
 
-
-
-
-        raise NotImplementedError
-
-        ####################################
