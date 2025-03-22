@@ -94,7 +94,7 @@ class SensorModel:
             raise ValueError("Alpha values must sum to 1.")
         
         self.z_max = 10
-        self.epsilon = 0.01
+        
         
         def p_hit(z, d):
             """Case 1: Gaussian centered on expected distance d."""
@@ -110,8 +110,8 @@ class SensorModel:
 
         def p_max(z):
             """Case 3: Max range (missed detection)."""
-            if self.z_max - self.epsilon <= z <= self.z_max:
-                return 1.0 / self.epsilon
+            if z == self.z_max:
+                return 1.0 
             return 0.0
 
         def p_rand(z):
@@ -119,23 +119,30 @@ class SensorModel:
             if 0 <= z <= self.z_max:
                 return 1.0 / self.z_max
             return 0.0
-
-        def likelihood(z, d):
-            """Total weighted mixture model for a single range measurement."""
-            return (
-                self.alpha_hit * self.p_hit(z, d) +
-                self.alpha_short * self.p_short(z, d) +
-                self.alpha_max * self.p_max(z) +
-                self.alpha_rand * self.p_rand(z)
-            )
-
-        for measured_distance in range(self.table_width):
-            for ground_truth in range(self.table_width):
-                measured_distance_scaled = measured_distance * (self.z_max / self.table_width) # normalize
-                ground_truth_scaled = ground_truth * (self.z_max / self.table_width) # normalize
-                self.sensor_model_table[measured_distance, ground_truth] = likelihood(measured_distance_scaled, ground_truth_scaled)
-
+      
+        # Compute likelihood table
+        P_hit = np.empty((self.table_width, self.table_width))
+        for z_k in range(0, self.table_width):
+            for d in range(0, self.table_width):
+                P_hit[z_k, d] = p_hit(float(z_k), float(d), self.sigma, self.z_max)
+        sumP_hit = np.sum(P_hit, axis=0)
+        sumP_hit[sumP_hit == 0] = 1  # Avoid division by zero
         
+        P_hit /= sumP_hit #normalize phit 
+
+        for z_k in range(self.table_width):
+            for d in range(self.table_width):
+                self.sensor_model_table[z_k, d] = (
+                    self.alpha_hit * p_hit[z_k, d] +
+                    self.alpha_short * p_short(z_k, d) +
+                    self.alpha_max * p_max(z_k, self.z_max) +
+                    self.alpha_rand * p_rand(z_k, self.z_max)
+                )
+            
+        col_sums = np.sum(self.sensor_model_table, axis=0, keepdims = True)
+        col_sums[col_sums == 0] = 1  # Avoid division by zero
+        self.sensor_model_table /= col_sums #normalize
+
 
     def evaluate(self, particles, observation):
         """

@@ -13,30 +13,21 @@ def p_short(z, d):
         return (2 / d) * (1 - (z / d))
     return 0
 
-def p_max(z, z_max, epsilon):
-    if z_max - epsilon <= z <= z_max:
-        return 1 / epsilon
-    return 0
+def p_max(z, z_max):   
+    return 1 if z == z_max else 0
 
 def p_rand(z, z_max):
     if 0 <= z <= z_max:
         return 1 / z_max
     return 0
 
-def p_z_given_xm(z, d, sigma, z_max, epsilon,
-                 alpha_hit, alpha_short, alpha_max, alpha_rand):
-    return (alpha_hit * p_hit(z, d, sigma, z_max) +
-            alpha_short * p_short(z, d) +
-            alpha_max * p_max(z, z_max, epsilon) +
-            alpha_rand * p_rand(z, z_max))
+
 
 
 # 3D sensor model plot function
-def plot_sensor_model_3d(
-    sigma=8,
-    z_max=10.0,
-    epsilon=0.01,
-    table_width=200,
+def plot_sensor_model_3d(sigma=8.0,
+    z_max=200.0,
+    table_width=201,
     alpha_hit=0.74,
     alpha_short=0.07,
     alpha_max=0.07,
@@ -51,32 +42,38 @@ def plot_sensor_model_3d(
     zs = np.linspace(0, z_max, table_width)
     ds = np.linspace(0, z_max, table_width)
     Z, D = np.meshgrid(zs, ds, indexing='ij')
+    P_hit = np.empty((table_width, table_width))
+
 
     # Compute likelihood table
-    P = np.zeros_like(Z)
-    for i in range(table_width):
-        for j in range(table_width):
-            z = zs[i]
-            d = ds[j]
-            P[i, j] = p_z_given_xm(z, d, sigma, z_max, epsilon,
-                                   alpha_hit, alpha_short, alpha_max, alpha_rand)
-            if P[i, j] > 1:
-                print("Warning: Probability greater than 1 detected. Check parameters.")
+    for z_k in range(0, table_width):
+        for d in range(0, table_width):
+            P_hit[z_k, d] = p_hit(float(z_k), float(d), sigma, z_max)
+    sumP_hit = np.sum(P_hit, axis=0)
+    sumP_hit[sumP_hit == 0] = 1  # Avoid division by zero
     
-    # Normalize each column (for each d) so that they sum to 1
-    col_sums = np.sum(P, axis=0)
-    # Avoid division by zero; if a column sums to 0, leave it as is
-    col_sums[col_sums == 0] = 1
-    P = P / col_sums[None, :]
+    P_hit /= sumP_hit
+    P= np.empty((table_width, table_width))
 
+    for z_k in range(table_width):
+        for d in range(table_width):
+            P[z_k, d] = (
+                alpha_hit * P_hit[z_k, d] +
+                alpha_short * p_short(z_k, d) +
+                alpha_max * p_max(z_k, z_max) +
+                alpha_rand * p_rand(z_k, z_max)
+            )
+           
+    col_sums = np.sum(P, axis=0, keepdims = True)
+    col_sums[col_sums == 0] = 1  # Avoid division by zero
+    P /= col_sums
     # Plot 3D surface
     fig = plt.figure(figsize=(10, 7))
     ax = fig.add_subplot(111, projection='3d')
     surf = ax.plot_surface(D, Z, P, cmap='viridis', edgecolor='none')
-    print(plot_sensor_model_3d)
 
-    ax.set_xlabel('Ground Truth Distance (d)')
-    ax.set_ylabel('Measured Distance (z)')
+    ax.set_xlabel('Ground Truth Distance (in px)')
+    ax.set_ylabel('Measured Distance (in px)')
     ax.set_zlabel('p(z | d)')
     ax.set_title('3D Sensor Model: Likelihood Surface')
     fig.colorbar(surf, shrink=0.5, aspect=1, label='Probability')
