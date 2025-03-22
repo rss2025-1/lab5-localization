@@ -108,6 +108,20 @@ class ParticleFilter(Node):
             
             return mean_x, mean_y, mean_theta
 
+
+        def resample_particles(self):
+            """
+            Resample particles based on weights using numpy.random.choice
+            """
+            indices = np.random.choice(
+                self.num_particles, 
+                self.num_particles, 
+                replace=True, 
+                p=self.weights
+            )
+            self.particles = self.particles[indices]
+            self.weights = np.ones(self.num_particles) / self.num_particles
+
         def initialize_particles(self, initial_pose, num_particles=200, spread_radius=1.0):
             """
             Initialize particles around an initial pose with some random spread
@@ -143,19 +157,41 @@ class ParticleFilter(Node):
             self.particles[:, 2] = np.arctan2(np.sin(self.particles[:, 2]), np.cos(self.particles[:, 2]))
 
             self.get_logger().info(f"Initialized {num_particles} particles around ({x:.2f}, {y:.2f}, {theta:.2f})")
-        def publish_avg_tf(self):
-            avg_x, avg_y, avg_theta = self.compute_average_pose()
-            transform = TransformStamped()
-            transform.header.stamp = now.to_msg()
-            transform.header.frame_id = "/map"
-            transform.child_frame_id = self.particle_filter_frame
 
-            transform.transform.translation.x = avg_x
-            transform.transform.translation.y = avg_y
+        def publish_pose_estimate(self):
+            """
+            Publish pose estimate as transform and odometry message
+            """
+            # Compute average pose
+            x, y, theta = self.compute_average_pose()
+            
+            # Create and publish transform
+            transform = TransformStamped()
+            transform.header.stamp = self.get_clock().now().to_msg()
+            transform.header.frame_id = "map"
+            transform.child_frame_id = self.particle_filter_frame
+            transform.transform.translation.x = x
+            transform.transform.translation.y = y
             transform.transform.translation.z = 0.0
-            transform.transform.rotation.x, transform.transform.rotation.y, transform.transform.rotation.z, transform.transform.rotation.w = quaternion_from_euler(
-                0, 0, avg_theta)
+            quat = quaternion_from_euler(0, 0, theta)
+            transform.transform.rotation.x = quat[0]
+            transform.transform.rotation.y = quat[1]
+            transform.transform.rotation.z = quat[2]
+            transform.transform.rotation.w = quat[3]
             self.tf_broadcaster.sendTransform(transform)
+            
+            # Create and publish odometry
+            odom = Odometry()
+            odom.header.stamp = self.get_clock().now().to_msg()
+            odom.header.frame_id = "map"
+            odom.pose.pose.position.x = x
+            odom.pose.pose.position.y = y
+            odom.pose.pose.position.z = 0.0
+            odom.pose.pose.orientation.x = quat[0]
+            odom.pose.pose.orientation.y = quat[1]
+            odom.pose.pose.orientation.z = quat[2]
+            odom.pose.pose.orientation.w = quat[3]
+            self.odom_pub.publish(odom)
 
 
 def main(args=None):
