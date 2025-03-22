@@ -76,6 +76,54 @@ class ParticleFilter(Node):
         # Publish a transformation frame between the map
         # and the particle_filter_frame.
 
+        def pose_callback(self, pose_msg):
+            """
+            Callback for pose initialization requests from RViz
+            
+            Args:
+                pose_msg: PoseWithCovarianceStamped message from /initialpose topic
+            """
+            self.initialize_particles(pose_msg)
+            self.weights = np.ones(len(self.particles)) / len(self.particles)
+            
+            self.get_logger().info("Reinitialized particles based on RViz pose estimate")
+
+        def initialize_particles(self, initial_pose, num_particles=200, spread_radius=1.0):
+            """
+            Initialize particles around an initial pose with some random spread
+            
+            Args:
+                initial_pose: PoseWithCovarianceStamped message containing initial position
+                num_particles: Number of particles to create
+                spread_radius: Maximum distance particles can be from initial pose
+            """
+            # Extract initial position and orientation
+            x = initial_pose.pose.pose.position.x  # x coordinate
+            y = initial_pose.pose.pose.position.y  # y coordinate
+            theta = euler_from_quaternion([        # Convert quaternion to yaw angle
+                initial_pose.pose.pose.orientation.x,
+                initial_pose.pose.pose.orientation.y,
+                initial_pose.pose.pose.orientation.z,
+                initial_pose.pose.pose.orientation.w
+            ])[2]  
+
+            # Create arrays to store particles
+            self.particles = np.zeros((num_particles, 3))  # Each particle is [x, y, theta]
+            self.weights = np.ones(num_particles) / num_particles  # Equal weights initially
+
+            # Add noise to create spread
+            # Position noise (x,y)
+            self.particles[:, 0] = x + np.random.uniform(-spread_radius, spread_radius, num_particles)
+            self.particles[:, 1] = y + np.random.uniform(-spread_radius, spread_radius, num_particles)
+            
+            # Orientation noise (theta)
+            self.particles[:, 2] = theta + np.random.uniform(-np.pi/4, np.pi/4, num_particles)
+            
+            # Normalize angles to [-pi, pi]
+            self.particles[:, 2] = np.arctan2(np.sin(self.particles[:, 2]), np.cos(self.particles[:, 2]))
+
+            self.get_logger().info(f"Initialized {num_particles} particles around ({x:.2f}, {y:.2f}, {theta:.2f})")
+
 
 def main(args=None):
     rclpy.init(args=args)
