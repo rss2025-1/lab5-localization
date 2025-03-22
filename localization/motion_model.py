@@ -10,7 +10,7 @@ class MotionModel:
 
         self.node = node
 
-        node.declare_parameter("deterministic", "default")
+        node.declare_parameter("deterministic", False)
         self.deterministic = node.get_parameter("deterministic").get_parameter_value().bool_value
 
         self.get_logger().info(f"Deterministic Mode: {self.deterministic}")
