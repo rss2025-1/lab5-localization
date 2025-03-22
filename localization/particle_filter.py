@@ -3,12 +3,14 @@ from localization.motion_model import MotionModel
 from sensor_msgs.msg import LaserScan
 
 from nav_msgs.msg import Odometry
-from geometry_msgs.msg import PoseWithCovarianceStamped
+from geometry_msgs.msg import PoseWithCovarianceStamped, PoseArray, Pose, TransformStamped
+from tf_transformations import quaternion_from_euler, euler_from_quaternion
 
 from rclpy.node import Node
 import rclpy
-
+import numpy as np
 assert rclpy
+import tf2_ros
 
 
 class ParticleFilter(Node):
@@ -59,6 +61,8 @@ class ParticleFilter(Node):
         #     "/map" frame.
 
         self.odom_pub = self.create_publisher(Odometry, "/pf/pose/odom", 1)
+
+        self.tf_broadcaster = tf2_ros.TransformBroadcaster(self)
 
         # Initialize the models
         self.motion_model = MotionModel(self)
@@ -139,6 +143,19 @@ class ParticleFilter(Node):
             self.particles[:, 2] = np.arctan2(np.sin(self.particles[:, 2]), np.cos(self.particles[:, 2]))
 
             self.get_logger().info(f"Initialized {num_particles} particles around ({x:.2f}, {y:.2f}, {theta:.2f})")
+        def publish_avg_tf(self):
+            avg_x, avg_y, avg_theta = self.compute_average_pose()
+            transform = TransformStamped()
+            transform.header.stamp = now.to_msg()
+            transform.header.frame_id = "/map"
+            transform.child_frame_id = self.particle_filter_frame
+
+            transform.transform.translation.x = avg_x
+            transform.transform.translation.y = avg_y
+            transform.transform.translation.z = 0.0
+            transform.transform.rotation.x, transform.transform.rotation.y, transform.transform.rotation.z, transform.transform.rotation.w = quaternion_from_euler(
+                0, 0, avg_theta)
+            self.tf_broadcaster.sendTransform(transform)
 
 
 def main(args=None):
