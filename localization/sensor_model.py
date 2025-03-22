@@ -168,17 +168,34 @@ class SensorModel:
         if not self.map_set:
             return
 
-        ####################################
-        # TODO
         # Evaluate the sensor model here!
         #
         # You will probably want to use this function
         # to perform ray tracing from all the particles.
         # This produces a matrix of size N x num_beams_per_particle 
 
-        scans = self.scan_sim.scan(particles)
+        stride = 10
+        
+        observation = self.meters_to_pixels(np.array(observation[::stride])) # 1 x num_beams
+        observation = np.repeat(observation[np.newaxis, :], N, axis=0) # N * num_beams
+        observation = np.rint(np.clip(observation, 0, 200)).astype(int) # N * num_beams
 
-        ####################################
+        scans = self.scan_sim.scan(particles)
+        scans = self.meters_to_pixels(np.array(scans)) # N * num_beams
+        scans = np.rint(np.clip(scans, 0, 200)).astype(int) # N * num_beams
+
+        N,m = scans.shape
+        for scan in scans:
+            difference = np.abs(scan - observation)
+            likelihood = 1
+            for i in range(len(scan)):
+                likelihood *= self.sensor_model_table[difference[i], scan[i]]
+
+        probs = self.sensor_model_table[difference, scan]
+
+        probs = np.exp(np.sum(np.log(probs), axis=1))
+        return np.array(np.power(probs, 1.0 / self.num_beams_per_particle))
+
 
     def map_callback(self, map_msg):
         # Convert the map to a numpy array
