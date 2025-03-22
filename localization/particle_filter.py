@@ -88,6 +88,22 @@ class ParticleFilter(Node):
             
             self.get_logger().info("Reinitialized particles based on RViz pose estimate")
 
+        def compute_average_pose(self):
+            """Compute average pose from particles"""
+            if self.particles is None:
+                return None
+                
+            # Compute mean position
+            mean_x = np.average(self.particles[:, 0], weights=self.weights)
+            mean_y = np.average(self.particles[:, 1], weights=self.weights)
+            
+            # Compute mean orientation using CIRCULAR MEAN
+            sin_sum = np.sum(np.sin(self.particles[:, 2]) * self.weights)
+            cos_sum = np.sum(np.cos(self.particles[:, 2]) * self.weights)
+            mean_theta = np.arctan2(sin_sum, cos_sum)
+            
+            return mean_x, mean_y, mean_theta
+
         def initialize_particles(self, initial_pose, num_particles=200, spread_radius=1.0):
             """
             Initialize particles around an initial pose with some random spread
