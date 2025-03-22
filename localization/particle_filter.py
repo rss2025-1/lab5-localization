@@ -11,12 +11,21 @@ import rclpy
 import numpy as np
 assert rclpy
 import tf2_ros
+import threading
 
 
 class ParticleFilter(Node):
 
     def __init__(self):
         super().__init__("particle_filter")
+
+        # MAKE SURE YOU INITIALIZED ALL THESE VARIABLES
+        self.initialized = False
+        self.lock = threading.Lock()
+        self.prev_time = self.get_clock().now()
+        self.num_particles = 200  # Default value or get from parameter
+        self.particles = None
+        self.weights = None
 
         self.declare_parameter('particle_filter_frame', "default")
         self.particle_filter_frame = self.get_parameter('particle_filter_frame').get_parameter_value().string_value
@@ -80,118 +89,221 @@ class ParticleFilter(Node):
         # Publish a transformation frame between the map
         # and the particle_filter_frame.
 
-        def pose_callback(self, pose_msg):
-            """
-            Callback for pose initialization requests from RViz
-            
-            Args:
-                pose_msg: PoseWithCovarianceStamped message from /initialpose topic
-            """
+    def pose_callback(self, pose_msg):
+        """
+        Callback for pose initialization requests from RViz
+        
+        Args:
+            pose_msg: PoseWithCovarianceStamped message from /initialpose topic
+        """
+        self.lock.acquire()
+        try:
             self.initialize_particles(pose_msg)
             self.weights = np.ones(len(self.particles)) / len(self.particles)
+            self.initialized = True 
+            self.prev_time = self.get_clock().now() 
             
             self.get_logger().info("Reinitialized particles based on RViz pose estimate")
+        finally:
+            self.lock.release()
 
-        def compute_average_pose(self):
-            """Compute average pose from particles"""
-            if self.particles is None:
-                return None
+    def odom_callback(self, odom_msg):
+        """
+        Update particle positions using motion model
+        """
+        if not self.initialized:
+            return
+            
+        self.lock.acquire()
+        try:
+            # Calculate time difference
+            now = self.get_clock().now()
+            dt = (now - self.prev_time).nanoseconds / 1e9
+            self.prev_time = now
+            
+            # Skip if dt is too small (avoid division by zero)
+            if dt < 1e-6:
+                return
                 
-            # Compute mean position
-            mean_x = np.average(self.particles[:, 0], weights=self.weights)
-            mean_y = np.average(self.particles[:, 1], weights=self.weights)
+            # Extract motion data (use only twist component as instructed)
+            vx = odom_msg.twist.twist.linear.x
+            vy = odom_msg.twist.twist.linear.y
+            wz = odom_msg.twist.twist.angular.z
             
-            # Compute mean orientation using CIRCULAR MEAN
-            sin_sum = np.sum(np.sin(self.particles[:, 2]) * self.weights)
-            cos_sum = np.sum(np.cos(self.particles[:, 2]) * self.weights)
-            mean_theta = np.arctan2(sin_sum, cos_sum)
+            # Scale by time
+            dx = vx * dt
+            dy = vy * dt
+            dtheta = wz * dt
             
-            return mean_x, mean_y, mean_theta
+            # Update particles using motion model
+            self.particles = self.motion_model.evaluate(self.particles, [dx, dy, dtheta])
+            
+            # Publish updated pose
+            self.publish_pose_estimate()
+            
+        finally:
+            self.lock.release()
+
+    def laser_callback(self, scan_msg):
+        """
+        Update particle weights using sensor model and resample
+        """
+        if not self.sensor_model.map_set or not self.initialized:
+            return
+            
+        self.lock.acquire()
+        try:
+            # Downsample scan for efficiency (as recommended)
+            stride = 10  # Reduce from 1000+ to ~100 beams
+            ranges = np.array(scan_msg.ranges[::stride])
+            
+            # Update weights using sensor model
+            self.weights = self.sensor_model.evaluate(self.particles, ranges)
+            
+            # Normalize weights
+            if np.sum(self.weights) > 0:
+                self.weights /= np.sum(self.weights)
+            else:
+                # If all weights are zero, reinitialize with uniform weights
+                self.weights = np.ones(self.num_particles) / self.num_particles
+                self.get_logger().warn("All particle weights are zero - reinitializing weights")
+                
+            # Resample particles
+            self.resample_particles()
+            
+            # Publish results
+            self.publish_pose_estimate()
+            # self.publish_particles()
+            
+        finally:
+            self.lock.release()
+
+    def compute_average_pose(self):
+        """Compute average pose from particles"""
+        if self.particles is None:
+            return None
+            
+        # Compute mean position
+        mean_x = np.average(self.particles[:, 0], weights=self.weights)
+        mean_y = np.average(self.particles[:, 1], weights=self.weights)
+        
+        # Compute mean orientation using CIRCULAR MEAN
+        sin_sum = np.sum(np.sin(self.particles[:, 2]) * self.weights)
+        cos_sum = np.sum(np.cos(self.particles[:, 2]) * self.weights)
+        mean_theta = np.arctan2(sin_sum, cos_sum)
+        
+        return mean_x, mean_y, mean_theta
 
 
-        def resample_particles(self):
-            """
-            Resample particles based on weights using numpy.random.choice
-            """
-            indices = np.random.choice(
-                self.num_particles, 
-                self.num_particles, 
-                replace=True, 
-                p=self.weights
-            )
-            self.particles = self.particles[indices]
-            self.weights = np.ones(self.num_particles) / self.num_particles
+    def resample_particles(self):
+        """
+        Resample particles based on weights using numpy.random.choice
+        """
+        indices = np.random.choice(
+            self.num_particles, 
+            self.num_particles, 
+            replace=True, 
+            p=self.weights
+        )
+        self.particles = self.particles[indices]
+        self.weights = np.ones(self.num_particles) / self.num_particles
 
-        def initialize_particles(self, initial_pose, num_particles=200, spread_radius=1.0):
-            """
-            Initialize particles around an initial pose with some random spread
-            
-            Args:
-                initial_pose: PoseWithCovarianceStamped message containing initial position
-                num_particles: Number of particles to create
-                spread_radius: Maximum distance particles can be from initial pose
-            """
-            # Extract initial position and orientation
-            x = initial_pose.pose.pose.position.x  # x coordinate
-            y = initial_pose.pose.pose.position.y  # y coordinate
-            theta = euler_from_quaternion([        # Convert quaternion to yaw angle
-                initial_pose.pose.pose.orientation.x,
-                initial_pose.pose.pose.orientation.y,
-                initial_pose.pose.pose.orientation.z,
-                initial_pose.pose.pose.orientation.w
-            ])[2]  
+    def initialize_particles(self, initial_pose, num_particles=200, spread_radius=1.0):
+        """
+        Initialize particles around an initial pose with some random spread
+        
+        Args:
+            initial_pose: PoseWithCovarianceStamped message containing initial position
+            num_particles: Number of particles to create
+            spread_radius: Maximum distance particles can be from initial pose
+        """
+        # Extract initial position and orientation
+        x = initial_pose.pose.pose.position.x  # x coordinate
+        y = initial_pose.pose.pose.position.y  # y coordinate
+        theta = euler_from_quaternion([        # Convert quaternion to yaw angle
+            initial_pose.pose.pose.orientation.x,
+            initial_pose.pose.pose.orientation.y,
+            initial_pose.pose.pose.orientation.z,
+            initial_pose.pose.pose.orientation.w
+        ])[2]  
 
-            # Create arrays to store particles
-            self.particles = np.zeros((num_particles, 3))  # Each particle is [x, y, theta]
-            self.weights = np.ones(num_particles) / num_particles  # Equal weights initially
+        # Create arrays to store particles
+        self.particles = np.zeros((num_particles, 3))  # Each particle is [x, y, theta]
+        self.weights = np.ones(num_particles) / num_particles  # Equal weights initially
 
-            # Add noise to create spread
-            # Position noise (x,y)
-            self.particles[:, 0] = x + np.random.uniform(-spread_radius, spread_radius, num_particles)
-            self.particles[:, 1] = y + np.random.uniform(-spread_radius, spread_radius, num_particles)
-            
-            # Orientation noise (theta)
-            self.particles[:, 2] = theta + np.random.uniform(-np.pi/4, np.pi/4, num_particles)
-            
-            # Normalize angles to [-pi, pi]
-            self.particles[:, 2] = np.arctan2(np.sin(self.particles[:, 2]), np.cos(self.particles[:, 2]))
+        # Add noise to create spread
+        # Position noise (x,y)
+        self.particles[:, 0] = x + np.random.uniform(-spread_radius, spread_radius, num_particles)
+        self.particles[:, 1] = y + np.random.uniform(-spread_radius, spread_radius, num_particles)
+        
+        # Orientation noise (theta)
+        self.particles[:, 2] = theta + np.random.uniform(-np.pi/4, np.pi/4, num_particles)
+        
+        # Normalize angles to [-pi, pi]
+        self.particles[:, 2] = np.arctan2(np.sin(self.particles[:, 2]), np.cos(self.particles[:, 2]))
 
-            self.get_logger().info(f"Initialized {num_particles} particles around ({x:.2f}, {y:.2f}, {theta:.2f})")
+        self.get_logger().info(f"Initialized {num_particles} particles around ({x:.2f}, {y:.2f}, {theta:.2f})")
 
-        def publish_pose_estimate(self):
-            """
-            Publish pose estimate as transform and odometry message
-            """
-            # Compute average pose
-            x, y, theta = self.compute_average_pose()
+    def publish_pose_estimate(self):
+        """
+        Publish pose estimate as transform and odometry message
+        """
+        # Compute average pose
+        x, y, theta = self.compute_average_pose()
+        
+        # Create and publish transform
+        transform = TransformStamped()
+        transform.header.stamp = self.get_clock().now().to_msg()
+        transform.header.frame_id = "/map"
+        transform.child_frame_id = self.particle_filter_frame
+        transform.transform.translation.x = x
+        transform.transform.translation.y = y
+        transform.transform.translation.z = 0.0
+        quat = quaternion_from_euler(0, 0, theta)
+        transform.transform.rotation.x = quat[0]
+        transform.transform.rotation.y = quat[1]
+        transform.transform.rotation.z = quat[2]
+        transform.transform.rotation.w = quat[3]
+        self.tf_broadcaster.sendTransform(transform)
+        
+        # Create and publish odometry
+        odom = Odometry()
+        odom.header.stamp = self.get_clock().now().to_msg()
+        odom.header.frame_id = "/map"
+        odom.pose.pose.position.x = x
+        odom.pose.pose.position.y = y
+        odom.pose.pose.position.z = 0.0
+        odom.pose.pose.orientation.x = quat[0]
+        odom.pose.pose.orientation.y = quat[1]
+        odom.pose.pose.orientation.z = quat[2]
+        odom.pose.pose.orientation.w = quat[3]
+        self.odom_pub.publish(odom)
+
+    # def publish_particles(self):
+    #     """
+    #     THIS IS FOR DEBUGGING! Publish particles for visualization
+    #     """
+    #     # Only publish if someone is subscribed (optimization)
+    #     if self.particles_pub.get_subscription_count() == 0:
+    #         return
             
-            # Create and publish transform
-            transform = TransformStamped()
-            transform.header.stamp = self.get_clock().now().to_msg()
-            transform.header.frame_id = "map"
-            transform.child_frame_id = self.particle_filter_frame
-            transform.transform.translation.x = x
-            transform.transform.translation.y = y
-            transform.transform.translation.z = 0.0
-            quat = quaternion_from_euler(0, 0, theta)
-            transform.transform.rotation.x = quat[0]
-            transform.transform.rotation.y = quat[1]
-            transform.transform.rotation.z = quat[2]
-            transform.transform.rotation.w = quat[3]
-            self.tf_broadcaster.sendTransform(transform)
+    #     msg = PoseArray()
+    #     msg.header.stamp = self.get_clock().now().to_msg()
+    #     msg.header.frame_id = "map"
+        
+    #     # Convert particles to poses
+    #     for i in range(min(self.num_particles, 100)):  # Limit to 100 for visualization
+    #         pose = Pose()
+    #         pose.position.x = self.particles[i, 0]
+    #         pose.position.y = self.particles[i, 1]
+    #         quat = quaternion_from_euler(0, 0, self.particles[i, 2])
+    #         pose.orientation.x = quat[0]
+    #         pose.orientation.y = quat[1]
+    #         pose.orientation.z = quat[2]
+    #         pose.orientation.w = quat[3]
+    #         msg.poses.append(pose)
             
-            # Create and publish odometry
-            odom = Odometry()
-            odom.header.stamp = self.get_clock().now().to_msg()
-            odom.header.frame_id = "map"
-            odom.pose.pose.position.x = x
-            odom.pose.pose.position.y = y
-            odom.pose.pose.position.z = 0.0
-            odom.pose.pose.orientation.x = quat[0]
-            odom.pose.pose.orientation.y = quat[1]
-            odom.pose.pose.orientation.z = quat[2]
-            odom.pose.pose.orientation.w = quat[3]
-            self.odom_pub.publish(odom)
+    #     self.particles_pub.publish(msg)
 
 
 def main(args=None):
