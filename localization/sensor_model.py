@@ -93,56 +93,50 @@ class SensorModel:
         if not np.isclose(total, 1.0):
             raise ValueError("Alpha values must sum to 1.")
         
-        self.z_max = 10
-        
-        
-        def p_hit(z, d):
-            """Case 1: Gaussian centered on expected distance d."""
-            if 0 <= z <= self.z_max:
-                return (1.0 / (np.sqrt(2 * np.pi) * self.sigma_hit)) * np.exp(-0.5 * ((z - d) / self.sigma_hit) ** 2)
-            return 0.0
+        self.z_max = self.table_width - 1  # Maximum range of the sensor
 
-        def p_short(z, d):
-            """Case 2: Short measurement (unexpected obstacle)."""
-            if 0 <= z <= d and d != 0:
-                return (2.0 / d) * (1 - (z / d))
-            return 0.0
+        # Build grid
+        zs = np.linspace(0, self.z_max, self.table_width)
+        ds = np.linspace(0, self.z_max, self.table_width)
+        Z, D = np.meshgrid(zs, ds, indexing='ij')
 
-        def p_max(z):
-            """Case 3: Max range (missed detection)."""
-            if z == self.z_max:
-                return 1.0 
-            return 0.0
+        # Compute P_hit likelihood table
+        """Case 1: Gaussian centered on expected distance d."""
+        P_hit = (1.0 / (np.sqrt(2 * np.pi * self.sigma_hit**2))) * np.exp(-((Z - D) ** 2) / (2 * self.sigma_hit**2))
+        # Normalize each column (ground truth slice) to sum to 1
+        sumP_hit = np.sum(P_hit, axis=0, keepdims=True)
+        sumP_hit[sumP_hit == 0] = 1  # avoid division by zero
+        P_hit /= sumP_hit
 
-        def p_rand(z):
-            """Case 4: Random measurement (noise, unknown event)."""
-            if 0 <= z <= self.z_max:
-                return 1.0 / self.z_max
-            return 0.0
-      
-        # Compute likelihood table
-        P_hit = np.empty((self.table_width, self.table_width))
-        for z_k in range(0, self.table_width):
-            for d in range(0, self.table_width):
-                P_hit[z_k, d] = p_hit(float(z_k), float(d), self.sigma, self.z_max)
-        sumP_hit = np.sum(P_hit, axis=0)
-        sumP_hit[sumP_hit == 0] = 1  # Avoid division by zero
-        
-        P_hit /= sumP_hit #normalize phit 
+        # Compute P_short likelihood table
+        """Case 2: Short measurement (unexpected obstacle)."""
+        P_short = np.zeros_like(P_hit)
+        mask_short = (Z <= D) & (D != 0) # p_short is defined only when 0 <= z <= d and d != 0.
+        P_short[mask_short] = (2.0 / D[mask_short]) * (1 - (Z[mask_short] / D[mask_short]))
 
-        for z_k in range(self.table_width):
-            for d in range(self.table_width):
-                self.sensor_model_table[z_k, d] = (
-                    self.alpha_hit * p_hit[z_k, d] +
-                    self.alpha_short * p_short(z_k, d) +
-                    self.alpha_max * p_max(z_k, self.z_max) +
-                    self.alpha_rand * p_rand(z_k, self.z_max)
-                )
-            
-        col_sums = np.sum(self.sensor_model_table, axis=0, keepdims = True)
-        col_sums[col_sums == 0] = 1  # Avoid division by zero
-        self.sensor_model_table /= col_sums #normalize
+        # Compute P_max likelihood table
+        # p_max is 1 if z == z_max and 0 otherwise.
+        """Case 3: Max range (missed detection)."""
+        P_max = np.where(np.isclose(Z, self.z_max), 1.0, 0.0) # np.isclose to deal with any floating point precision issues.
 
+        # Compute P_rand likelihood table
+        """Case 4: Random measurement (noise, unknown event)."""
+        P_rand = np.full_like(P_hit, 1.0 / self.z_max)
+
+        # Combine all components into the final likelihood table
+        self.sensor_model_table = (
+            self.alpha_hit * P_hit +
+            self.alpha_short * P_short +
+            self.alpha_max   * P_max +
+            self.alpha_rand  * P_rand
+            )
+        # Normalize each column so that for each ground truth d, the probabilities sum to 1.
+        col_sums = np.sum(self.sensor_model_table, axis=0, keepdims=True)
+        col_sums[col_sums == 0] = 1  # avoid division by zero
+        self.sensor_model_table /= col_sums
+
+    def meters_to_pixels(self, meters):
+        return (meters / float(self.resolution * self.lidar_scale_to_map_scale))
 
     def evaluate(self, particles, observation):
         """
@@ -174,27 +168,30 @@ class SensorModel:
         # to perform ray tracing from all the particles.
         # This produces a matrix of size N x num_beams_per_particle 
 
-        stride = 10
-        
-        observation = self.meters_to_pixels(np.array(observation[::stride])) # 1 x num_beams
-        observation = np.repeat(observation[np.newaxis, :], N, axis=0) # N * num_beams
-        observation = np.rint(np.clip(observation, 0, 200)).astype(int) # N * num_beams
-
         scans = self.scan_sim.scan(particles)
         scans = self.meters_to_pixels(np.array(scans)) # N * num_beams
         scans = np.rint(np.clip(scans, 0, 200)).astype(int) # N * num_beams
+        
+        observation = self.meters_to_pixels(np.array(observation)) # 1 x num_beams
+        observation = np.rint(np.clip(observation, 0, 200)).astype(int) # 1 x num_beams
+        observation = observation[np.newaxis, :] # Reshaped for broadcasting
+        
+        likelihoods = self.sensor_model_table[scans, observation] # N x num_beams
+        probabilities = np.exp(np.sum(np.log(likelihoods + 1e-12), axis=1)) # N x 1, added 1e-12 to avoid log(0)
+        return probabilities
 
-        N,m = scans.shape
-        for scan in scans:
-            difference = np.abs(scan - observation)
-            likelihood = 1
-            for i in range(len(scan)):
-                likelihood *= self.sensor_model_table[difference[i], scan[i]]
+        # Geometric mean might be extra and unexpected from unit tests; we can try it after everything works.
+        # N,m = scans.shape
+        # for scan in scans:
+        #     difference = np.abs(scan - observation)
+        #     likelihood = 1
+        #     for i in range(len(scan)):
+        #         likelihood *= self.sensor_model_table[difference[i], scan[i]]
 
-        probs = self.sensor_model_table[difference, scan]
+        # probs = self.sensor_model_table[difference, scan]
 
-        probs = np.exp(np.sum(np.log(probs), axis=1))
-        return np.array(np.power(probs, 1.0 / self.num_beams_per_particle))
+        # probs = np.exp(np.sum(np.log(probs), axis=1))
+        # return np.array(np.power(probs, 1.0 / self.num_beams_per_particle))
 
 
     def map_callback(self, map_msg):
