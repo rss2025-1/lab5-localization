@@ -73,11 +73,11 @@ class ParticleFilter(Node):
 
         self.tf_broadcaster = tf2_ros.TransformBroadcaster(self)
         self.particles_pub = self.create_publisher(PoseArray, "/particles", 1) # For debuggingvisualization
-        self.num_beams_per_particle = self.get_parameter("num_beams_per_particle").get_parameter_value().integer_value
 
         # Initialize the models
         self.motion_model = MotionModel(self)
         self.sensor_model = SensorModel(self)
+        self.num_beams_per_particle = self.get_parameter("num_beams_per_particle").get_parameter_value().integer_value
 
         self.get_logger().info("=============+READY+=============")
 
