@@ -308,7 +308,7 @@ class ParticleFilter(Node):
             msg.poses.append(pose)
             
         self.particles_pub.publish(msg)
-        self.get_logger().info("Num particles: ",self.num_particles)
+        self.get_logger().info(f"Num particles:  {self.num_particles}")
 
 
 def main(args=None):
