@@ -175,7 +175,7 @@ class ParticleFilter(Node):
             
             # Publish results
             self.publish_pose_estimate()
-            # self.publish_particles()
+            self.publish_particles()
             
         finally:
             self.lock.release()
@@ -283,31 +283,31 @@ class ParticleFilter(Node):
         odom.pose.pose.orientation.w = quat[3]
         self.odom_pub.publish(odom)
 
-    # def publish_particles(self):
-    #     """
-    #     THIS IS FOR DEBUGGING! Publish particles for visualization
-    #     """
-    #     # Only publish if someone is subscribed (optimization)
-    #     if self.particles_pub.get_subscription_count() == 0:
-    #         return
+    def publish_particles(self):
+        """
+        THIS IS FOR DEBUGGING! Publish particles for visualization
+        """
+        # Only publish if someone is subscribed (optimization)
+        if self.particles_pub.get_subscription_count() == 0:
+            return
             
-    #     msg = PoseArray()
-    #     msg.header.stamp = self.get_clock().now().to_msg()
-    #     msg.header.frame_id = "map"
+        msg = PoseArray()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = "map"
         
-    #     # Convert particles to poses
-    #     for i in range(min(self.num_particles, 100)):  # Limit to 100 for visualization
-    #         pose = Pose()
-    #         pose.position.x = self.particles[i, 0]
-    #         pose.position.y = self.particles[i, 1]
-    #         quat = quaternion_from_euler(0, 0, self.particles[i, 2])
-    #         pose.orientation.x = quat[0]
-    #         pose.orientation.y = quat[1]
-    #         pose.orientation.z = quat[2]
-    #         pose.orientation.w = quat[3]
-    #         msg.poses.append(pose)
+        # Convert particles to poses
+        for i in range(min(self.num_particles, 100)):  # Limit to 100 for visualization
+            pose = Pose()
+            pose.position.x = self.particles[i, 0]
+            pose.position.y = self.particles[i, 1]
+            quat = quaternion_from_euler(0, 0, self.particles[i, 2])
+            pose.orientation.x = quat[0]
+            pose.orientation.y = quat[1]
+            pose.orientation.z = quat[2]
+            pose.orientation.w = quat[3]
+            msg.poses.append(pose)
             
-    #     self.particles_pub.publish(msg)
+        self.particles_pub.publish(msg)
 
 
 def main(args=None):
