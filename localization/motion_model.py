@@ -8,12 +8,10 @@ class MotionModel:
         # Do any precomputation for the motion
         # model here.
 
-        self.node = node
-
         node.declare_parameter("deterministic", False)
         self.deterministic = node.get_parameter("deterministic").get_parameter_value().bool_value
 
-        self.get_logger().info(f"Deterministic Mode: {self.deterministic}")
+        node.get_logger().info(f"Deterministic Mode: {self.deterministic}")
         ####################################
 
     def evaluate(self, particles, odometry):
