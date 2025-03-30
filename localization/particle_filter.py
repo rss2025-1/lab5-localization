@@ -293,7 +293,7 @@ class ParticleFilter(Node):
             
         msg = PoseArray()
         msg.header.stamp = self.get_clock().now().to_msg()
-        msg.header.frame_id = "/base_link"
+        msg.header.frame_id = "/map"
         
         # Convert particles to poses
         for i in range(min(self.num_particles, 100)):  # Limit to 100 for visualization
