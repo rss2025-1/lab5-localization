@@ -72,6 +72,8 @@ class ParticleFilter(Node):
         self.odom_pub = self.create_publisher(Odometry, "/pf/pose/odom", 1)
 
         self.tf_broadcaster = tf2_ros.TransformBroadcaster(self)
+        self.particles_pub = self.create_publisher(PoseArray, "/particles", 1) # For debuggingvisualization
+        self.num_beams_per_particle = self.get_parameter("num_beams_per_particle").get_parameter_value().integer_value
 
         # Initialize the models
         self.motion_model = MotionModel(self)
@@ -154,8 +156,8 @@ class ParticleFilter(Node):
         self.lock.acquire()
         try:
             # Downsample scan for efficiency (as recommended)
-            stride = 10  # Reduce from 1000+ to ~100 beams
-            ranges = np.array(scan_msg.ranges[::stride])
+            downsampled_indices = np.linspace(0, len(scan_msg.ranges) - 1, self.num_beams_per_particle, dtype=int)
+            ranges = np.array(scan_msg.ranges)[downsampled_indices]
             
             # Update weights using sensor model
             self.weights = self.sensor_model.evaluate(self.particles, ranges)
@@ -182,7 +184,9 @@ class ParticleFilter(Node):
         """Compute average pose from particles"""
         if self.particles is None:
             return None
-            
+        
+        # This still doesn't handle multi modal cases, which we can just use histogram bins for. But I want to check if it's even necessary since it adds more computation.
+
         # Compute mean position
         mean_x = np.average(self.particles[:, 0], weights=self.weights)
         mean_y = np.average(self.particles[:, 1], weights=self.weights)
