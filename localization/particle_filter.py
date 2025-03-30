@@ -156,7 +156,7 @@ class ParticleFilter(Node):
         self.lock.acquire()
         try:
             # Downsample scan for efficiency (as recommended)
-            downsampled_indices = np.linspace(0, len(scan_msg.ranges) - 1, self.num_beams_per_particle, dtype=int)
+            downsampled_indices = np.linspace(0, len(scan_msg.ranges) - 1, self.num_beams_per_particle).astype(int)
             ranges = np.array(scan_msg.ranges)[downsampled_indices]
             
             # Update weights using sensor model
