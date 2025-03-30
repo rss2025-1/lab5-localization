@@ -34,38 +34,34 @@ class MotionModel:
             particles: An updated matrix of the
                 same size
         """
-
-
+        particles = np.asarray(particles) # Ensure particles is a numpy array
 
         dx, dy, dtheta = odometry
 
-        sigma_x = 0 # TODO
-        sigma_y = 0 # TODO
-        sigma_theta = 0 # TODO
+        sigma_x = 0  # TODO
+        sigma_y = 0  # TODO
+        sigma_theta = 0  # TODO
 
-        updated_particles = []
+        x = particles[:, 0]
+        y = particles[:, 1]
+        theta = particles[:, 2]
 
-        for particle in particles:
-            if not self.deterministic:
-                x_noise = np.random.normal(0, sigma_x)
-                y_noise = np.random.normal(0 ,sigma_y)
-                theta_noise = np.random.normal(0 ,sigma_theta)
-            else:
-                x_noise = 0
-                y_noise = 0
-                theta_noise = 0
+        # Rotate odometry displacement to the world frame
+        dx_world = dx * np.cos(theta) - dy * np.sin(theta)
+        dy_world = dx * np.sin(theta) + dy * np.cos(theta)
 
-            x, y, theta = particle
-            dx_world = x * np.cos(particle[-1]) - y * np.sin(particle[-1])
-            dy_world = x * np.sin(particle[-1]) + y * np.cos(particle[-1])
-            
-            updated_particle = [
-                x + dx_world + x_noise,
-                y + dy_world + y_noise,
-                theta + dtheta + theta_noise
-            ]
+        # Determine noise: if deterministic, use zeros; otherwise, sample from normal distributions
+        if not self.deterministic:
+            x_noise = np.random.normal(0, sigma_x, size=x.shape)
+            y_noise = np.random.normal(0, sigma_y, size=y.shape)
+            theta_noise = np.random.normal(0, sigma_theta, size=theta.shape)
 
-            updated_particles.append(updated_particle)
+        # Update particles with the rotated odometry and noise
+        new_x = x + dx_world + x_noise if not self.deterministic else x + dx_world
+        new_y = y + dy_world + y_noise if not self.deterministic else y + dy_world
+        new_theta = theta + dtheta + theta_noise if not self.deterministic else theta + dtheta
 
-        return np.array(updated_particles)
+        # Combine into the updated particles array
+        updated_particles = np.stack((new_x, new_y, new_theta), axis=-1)
+        return updated_particles
 
