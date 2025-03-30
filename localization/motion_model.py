@@ -37,8 +37,8 @@ class MotionModel:
         dx, dy, dtheta = odometry
 
         sigma_x = 0.1  # TODO
-        sigma_y = 0.1  # TODO
-        sigma_theta = 0.1  # TODO
+        sigma_y = 0.2  # TODO
+        sigma_theta = np.pi / 30 * 2  # TODO
 
         x = particles[:, 0]
         y = particles[:, 1]
