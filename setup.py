@@ -5,7 +5,7 @@ from setuptools import setup, find_packages, Extension
 
 package_name = 'localization'
 
-# RACECAR_SIMULATOR_PREFIX = os.path.join(os.environ["SIM_WS"], "install", "racecar_simulator")
+RACECAR_SIMULATOR_PREFIX = os.path.join(os.environ["SIM_WS"], "install", "racecar_simulator")
 
 extensions = Extension(
     "scan_simulator_2d",
