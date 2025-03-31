@@ -3,6 +3,8 @@ from localization.motion_model import MotionModel
 from sensor_msgs.msg import LaserScan
 
 from nav_msgs.msg import Odometry
+from std_msgs.msg import Float32
+
 from geometry_msgs.msg import PoseWithCovarianceStamped, PoseArray, Pose, TransformStamped
 from tf_transformations import quaternion_from_euler, euler_from_quaternion
 
@@ -43,7 +45,7 @@ class ParticleFilter(Node):
 
         scan_topic = self.get_parameter("scan_topic").get_parameter_value().string_value
         odom_topic = self.get_parameter("odom_topic").get_parameter_value().string_value
-
+        
         self.laser_sub = self.create_subscription(LaserScan, scan_topic,
                                                   self.laser_callback,
                                                   1)
@@ -69,15 +71,26 @@ class ParticleFilter(Node):
         #     odometry you publish here should be with respect to the
         #     "/map" frame.
 
+
+
         self.odom_pub = self.create_publisher(Odometry, "/pf/pose/odom", 1)
 
         self.tf_broadcaster = tf2_ros.TransformBroadcaster(self)
         self.particles_pub = self.create_publisher(PoseArray, "/particles", 1) # For debuggingvisualization
+        
+        self.tf_buffer =tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
         # Initialize the models
         self.motion_model = MotionModel(self)
         self.sensor_model = SensorModel(self)
         self.num_beams_per_particle = self.get_parameter("num_beams_per_particle").get_parameter_value().integer_value
+
+        self.x_error_pub = self.create_publisher(Float32, "/x_error", 10)
+        self.y_error_pub = self.create_publisher(Float32, "/y_error", 10)
+        self.distance_error_pub = self.create_publisher(Float32, "/distance_error", 10)
+        self.theta_error_pub = self.create_publisher(Float32, "/theta_error", 10)
+
 
         self.get_logger().info("=============+READY+=============")
 
@@ -196,6 +209,34 @@ class ParticleFilter(Node):
         cos_sum = np.sum(np.cos(self.particles[:, 2]) * self.weights)
         mean_theta = np.arctan2(sin_sum, cos_sum)
         
+        # Publish error for x, y, distance, and theta
+        t = self.tf_buffer.lookup_transform('map', 'base_link', rclpy.time.Time())
+        expected_x = t.transform.translation.x
+        expected_y = t.transform.translation.y
+        expected_dist = np.sqrt((expected_x - mean_x)**2 + (expected_y - mean_y)**2)
+        quat = t.transform.rotation
+        expected_theta = euler_from_quaternion([     
+            quat.x,
+            quat.y,
+            quat.z,
+            quat.w
+        ])[2]
+        x_error_msg = Float32()
+        x_error_msg.data = expected_x - mean_x
+        self.x_error_pub.publish(x_error_msg)
+
+        y_error_msg = Float32()
+        y_error_msg.data = expected_y - mean_y
+        self.y_error_pub.publish(y_error_msg)
+
+        dist_error_msg = Float32()
+        dist_error_msg.data = expected_dist
+        self.distance_error_pub.publish(dist_error_msg)
+
+        theta_error_msg = Float32()
+        theta_error_msg.data = expected_theta - mean_theta
+        self.theta_error_pub.publish(theta_error_msg)
+
         return mean_x, mean_y, mean_theta
 
 
