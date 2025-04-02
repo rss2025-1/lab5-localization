@@ -25,7 +25,8 @@ class ParticleFilter(Node):
         self.initialized = False
         self.lock = threading.Lock()
         self.prev_time = self.get_clock().now()
-        self.num_particles = 200  # Default value or get from parameter
+        self.declare_parameter('num_particles', 200)
+        self.num_particles = self.get_parameter('num_particles').get_parameter_value().integer_value  # Default value or get from parameter
         self.particles = None
         self.weights = None
 
@@ -91,6 +92,9 @@ class ParticleFilter(Node):
         self.distance_error_pub = self.create_publisher(Float32, "/distance_error", 10)
         self.theta_error_pub = self.create_publisher(Float32, "/theta_error", 10)
 
+        self.avg_pose_history = PoseArray()
+        self.avg_pose_history.header.frame_id = "/map"
+        self.pose_history_pub = self.create_publisher(PoseArray, "/pf/pose_history", 1)
 
         self.get_logger().info("=============+READY+=============")
 
@@ -114,6 +118,7 @@ class ParticleFilter(Node):
         self.lock.acquire()
         try:
             self.initialize_particles(pose_msg)
+            self.publish_particles()
             self.weights = np.ones(len(self.particles)) / len(self.particles)
             self.initialized = True 
             self.prev_time = self.get_clock().now() 
@@ -155,6 +160,7 @@ class ParticleFilter(Node):
             
             # Publish updated pose
             self.publish_pose_estimate()
+            self.publish_particles()
             
         finally:
             self.lock.release()
@@ -188,7 +194,6 @@ class ParticleFilter(Node):
             
             # Publish results
             self.publish_pose_estimate()
-            self.publish_particles()
             
         finally:
             self.lock.release()
@@ -323,6 +328,19 @@ class ParticleFilter(Node):
         odom.pose.pose.orientation.z = quat[2]
         odom.pose.pose.orientation.w = quat[3]
         self.odom_pub.publish(odom)
+
+        # Publish average pose history for visualization
+        pose = Pose()
+        pose.position.x = x
+        pose.position.y = y
+        pose.position.z = 0.0
+        pose.orientation.x = quat[0]
+        pose.orientation.y = quat[1]
+        pose.orientation.z = quat[2]
+        pose.orientation.w = quat[3]
+        self.avg_pose_history.poses.append(pose)
+        self.avg_pose_history.header.stamp = self.get_clock().now().to_msg()
+        self.pose_history_pub.publish(self.avg_pose_history)
 
     def publish_particles(self):
         """
