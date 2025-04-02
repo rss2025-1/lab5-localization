@@ -101,6 +101,8 @@ class ParticleFilter(Node):
         self.lock.acquire()
         try:
             self.initialize_particles(pose_msg)
+            self.publish_particles()
+            self.get_logger().info(f"{self.particles}")
             self.weights = np.ones(len(self.particles)) / len(self.particles)
             self.initialized = True 
             self.prev_time = self.get_clock().now() 
@@ -142,6 +144,7 @@ class ParticleFilter(Node):
             
             # Publish updated pose
             self.publish_pose_estimate()
+            self.publish_particles()
             
         finally:
             self.lock.release()
@@ -174,9 +177,7 @@ class ParticleFilter(Node):
             self.resample_particles()
             
             # Publish results
-            self.publish_pose_estimate()
-            self.publish_particles()
-            
+            self.publish_pose_estimate()            
         finally:
             self.lock.release()
 
