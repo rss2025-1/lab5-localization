@@ -8,8 +8,8 @@ class MotionModel:
         # Do any precomputation for the motion
         # model here.
 
-        node.declare_parameter("deterministic", False)
-        self.deterministic = node.get_parameter("deterministic").get_parameter_value().bool_value
+        node.declare_parameter("deterministic", True)
+        self.deterministic = node.get_parameter("deterministic").value
 
         node.get_logger().info(f"Deterministic Mode: {self.deterministic}")
         ####################################
@@ -38,7 +38,7 @@ class MotionModel:
 
         sigma_x = 0.1  # TODO
         sigma_y = 0.02  # TODO
-        sigma_theta = np.pi / 30 * 2  # TODO
+        sigma_theta = np.pi / 4  # TODO
 
         x = particles[:, 0]
         y = particles[:, 1]

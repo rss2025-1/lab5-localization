@@ -38,7 +38,7 @@ class ParticleFilter(Node):
         #     twist component, so you should rely only on that
         #     information, and *not* use the pose component.
         
-        self.declare_parameter('odom_topic', "/odom")
+        self.declare_parameter('odom_topic', "/vesc/odom")
         self.declare_parameter('scan_topic', "/scan")
 
         scan_topic = self.get_parameter("scan_topic").get_parameter_value().string_value
@@ -135,10 +135,12 @@ class ParticleFilter(Node):
             wz = odom_msg.twist.twist.angular.z
             
             # Scale by time
-            dx = vx * dt
+            dx = -(vx * dt)
             dy = vy * dt
-            dtheta = wz * dt
+            dtheta = -(wz * dt)
             
+            self.get_logger().info(f"dx:{dx}, dy:{dy}, dtheta:{dtheta}")
+
             # Update particles using motion model
             self.particles = self.motion_model.evaluate(self.particles, [dx, dy, dtheta])
             
