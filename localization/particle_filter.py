@@ -5,7 +5,7 @@ from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry
 from std_msgs.msg import Float32
 
-from geometry_msgs.msg import PoseWithCovarianceStamped, PoseArray, Pose, TransformStamped
+from geometry_msgs.msg import PoseWithCovarianceStamped, Point, PoseArray, Pose, TransformStamped, Quaternion
 from tf_transformations import quaternion_from_euler, euler_from_quaternion
 
 from rclpy.node import Node
@@ -292,8 +292,21 @@ class ParticleFilter(Node):
         # Normalize angles to [-pi, pi]
         self.particles[:, 2] = np.arctan2(np.sin(self.particles[:, 2]), np.cos(self.particles[:, 2]))
 
-        self.get_logger().info(f"Initialized {num_particles} particles around ({x:.2f}, {y:.2f}, {theta:.2f})")
+        # self.get_logger().info(f"Initialized {num_particles} particles around ({x:.2f}, {y:.2f}, {theta:.2f})")
+        self.avg_pose_history.poses = []
+        quaternions = np.array([quaternion_from_euler(0, 0, theta) for theta in self.particles[:, 2]])
 
+        # Create Pose messages using NumPy's efficient array handling
+        for (x, y), (qx, qy, qz, qw) in zip(self.particles[:, :2], quaternions):
+            pose = Pose()
+            pose.position.x = x
+            pose.position.y = y
+            pose.position.z = 0.0
+            pose.orientation.x = qx
+            pose.orientation.y = qy
+            pose.orientation.z = qz
+            pose.orientation.w = qw
+            self.avg_pose_history.poses.append(pose)
     def publish_pose_estimate(self):
         """
         Publish pose estimate as transform and odometry message
@@ -339,6 +352,7 @@ class ParticleFilter(Node):
         pose.orientation.z = quat[2]
         pose.orientation.w = quat[3]
         self.avg_pose_history.poses.append(pose)
+        self.get_logger().info(f"avg_pose_history len: {len(self.avg_pose_history.poses)}")
         self.avg_pose_history.header.stamp = self.get_clock().now().to_msg()
         self.pose_history_pub.publish(self.avg_pose_history)
 
