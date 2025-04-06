@@ -136,7 +136,7 @@ class ParticleFilter(Node):
             
             # Scale by time
             dx = -(vx * dt)
-            dy = vy * dt
+            dy = -(vy * dt)
             dtheta = -(wz * dt)
             
             self.get_logger().info(f"dx:{dx}, dy:{dy}, dtheta:{dtheta}")
