@@ -29,7 +29,7 @@ class ParticleFilter(Node):
         self.num_particles = self.get_parameter('num_particles').get_parameter_value().integer_value  # Default value or get from parameter
         self.particles = None
         self.weights = None
-
+        self.i = 0
         self.declare_parameter('particle_filter_frame', "default")
         self.particle_filter_frame = self.get_parameter('particle_filter_frame').get_parameter_value().string_value
 
@@ -93,6 +93,7 @@ class ParticleFilter(Node):
         self.theta_error_pub = self.create_publisher(Float32, "/theta_error", 10)
 
         self.avg_pose_history = PoseArray()
+        self.total_errors =np.array([0.0,0.0,0.0,0.0]) #x,y,d,theta
         self.avg_pose_history.header.frame_id = "/map"
         self.pose_history_pub = self.create_publisher(PoseArray, "/pf/pose_history", 1)
 
@@ -212,36 +213,43 @@ class ParticleFilter(Node):
         # Compute mean orientation using CIRCULAR MEAN
         sin_sum = np.sum(np.sin(self.particles[:, 2]) * self.weights)
         cos_sum = np.sum(np.cos(self.particles[:, 2]) * self.weights)
-        mean_theta = np.arctan2(sin_sum, cos_sum)
-        
+        mean_theta = np.arctan2(sin_sum, cos_sum) 
         # Publish error for x, y, distance, and theta
         t = self.tf_buffer.lookup_transform('map', 'base_link', rclpy.time.Time())
         expected_x = t.transform.translation.x
         expected_y = t.transform.translation.y
-        expected_dist = np.sqrt((expected_x - mean_x)**2 + (expected_y - mean_y)**2)
+        dist_error = np.sqrt((expected_x - mean_x)**2 + (expected_y - mean_y)**2)
         quat = t.transform.rotation
-        expected_theta = euler_from_quaternion([     
+        expected_theta = 2 * np.arctan2(quat.z, quat.w) 
+        
+        euler_from_quaternion([     
             quat.x,
             quat.y,
             quat.z,
             quat.w
         ])[2]
         x_error_msg = Float32()
-        x_error_msg.data = expected_x - mean_x
+        x_error_msg.data = float(expected_x - mean_x)
         self.x_error_pub.publish(x_error_msg)
 
         y_error_msg = Float32()
-        y_error_msg.data = expected_y - mean_y
+        y_error_msg.data = float(expected_y - mean_y)
         self.y_error_pub.publish(y_error_msg)
 
         dist_error_msg = Float32()
-        dist_error_msg.data = expected_dist
+        dist_error_msg.data = float(dist_error)
         self.distance_error_pub.publish(dist_error_msg)
 
         theta_error_msg = Float32()
-        theta_error_msg.data = expected_theta - mean_theta
-        self.theta_error_pub.publish(theta_error_msg)
 
+        theta_error_msg.data = float((expected_theta - mean_theta + np.pi) % (2 * np.pi) - np.pi)
+        self.theta_error_pub.publish(theta_error_msg)
+        self.total_errors = self.total_errors + np.array([abs(x_error_msg.data),abs(y_error_msg.data), (dist_error_msg.data),abs(theta_error_msg.data)])
+        if self.i == 125:
+            self.get_logger().info(f"(x,y,d,theta) errors: {self.total_errors/len(self.avg_pose_history.poses)}")
+            # self.get_logger().info(f"(x,y,d,theta) errors: {dist_error_msg.data/len(self.avg_pose_history.poses)}")
+            self.i = 0
+        self.i+= 1
         return mean_x, mean_y, mean_theta
 
 
@@ -294,6 +302,8 @@ class ParticleFilter(Node):
 
         # self.get_logger().info(f"Initialized {num_particles} particles around ({x:.2f}, {y:.2f}, {theta:.2f})")
         self.avg_pose_history.poses = []
+        self.total_errors =np.array([0.0,0.0,0.0,0.0]) #x,y,d,theta
+
         quaternions = np.array([quaternion_from_euler(0, 0, theta) for theta in self.particles[:, 2]])
 
         # Create Pose messages using NumPy's efficient array handling
@@ -352,7 +362,7 @@ class ParticleFilter(Node):
         pose.orientation.z = quat[2]
         pose.orientation.w = quat[3]
         self.avg_pose_history.poses.append(pose)
-        self.get_logger().info(f"avg_pose_history len: {len(self.avg_pose_history.poses)}")
+        # self.get_logger().info(f"avg_pose_history len: {len(self.avg_pose_history.poses)}")
         self.avg_pose_history.header.stamp = self.get_clock().now().to_msg()
         self.pose_history_pub.publish(self.avg_pose_history)
 
@@ -381,7 +391,7 @@ class ParticleFilter(Node):
             msg.poses.append(pose)
             
         self.particles_pub.publish(msg)
-        self.get_logger().info(f"Num particles:  {self.num_particles}")
+        # self.get_logger().info(f"Num particles:  {self.num_particles}")
 
 
 def main(args=None):
