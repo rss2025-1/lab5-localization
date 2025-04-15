@@ -79,22 +79,22 @@ class ParticleFilter(Node):
         self.tf_broadcaster = tf2_ros.TransformBroadcaster(self)
         self.particles_pub = self.create_publisher(PoseArray, "/particles", 1) # For debuggingvisualization
         
-        self.tf_buffer =tf2_ros.Buffer()
-        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
+        # self.tf_buffer =tf2_ros.Buffer()
+        # self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
         # Initialize the models
         self.motion_model = MotionModel(self)
         self.sensor_model = SensorModel(self)
         self.num_beams_per_particle = self.get_parameter("num_beams_per_particle").get_parameter_value().integer_value
 
-        self.x_error_pub = self.create_publisher(Float32, "/x_error", 10)
-        self.y_error_pub = self.create_publisher(Float32, "/y_error", 10)
-        self.distance_error_pub = self.create_publisher(Float32, "/distance_error", 10)
-        self.theta_error_pub = self.create_publisher(Float32, "/theta_error", 10)
+        # self.x_error_pub = self.create_publisher(Float32, "/x_error", 10)
+        # self.y_error_pub = self.create_publisher(Float32, "/y_error", 10)
+        # self.distance_error_pub = self.create_publisher(Float32, "/distance_error", 10)
+        # self.theta_error_pub = self.create_publisher(Float32, "/theta_error", 10)
 
-        self.avg_pose_history = PoseArray()
-        self.avg_pose_history.header.frame_id = "/map"
-        self.pose_history_pub = self.create_publisher(PoseArray, "/pf/pose_history", 1)
+        # self.avg_pose_history = PoseArray()
+        # self.avg_pose_history.header.frame_id = "/map"
+        # self.pose_history_pub = self.create_publisher(PoseArray, "/pf/pose_history", 1)
 
         self.get_logger().info("=============+READY+=============")
 
@@ -215,32 +215,32 @@ class ParticleFilter(Node):
         mean_theta = np.arctan2(sin_sum, cos_sum)
         
         # Publish error for x, y, distance, and theta
-        t = self.tf_buffer.lookup_transform('map', 'base_link', rclpy.time.Time())
-        expected_x = t.transform.translation.x
-        expected_y = t.transform.translation.y
-        expected_dist = np.sqrt((expected_x - mean_x)**2 + (expected_y - mean_y)**2)
-        quat = t.transform.rotation
-        expected_theta = euler_from_quaternion([     
-            quat.x,
-            quat.y,
-            quat.z,
-            quat.w
-        ])[2]
-        x_error_msg = Float32()
-        x_error_msg.data = expected_x - mean_x
-        self.x_error_pub.publish(x_error_msg)
+        # t = self.tf_buffer.lookup_transform('map', 'base_link', rclpy.time.Time())
+        # expected_x = t.transform.translation.x
+        # expected_y = t.transform.translation.y
+        # expected_dist = np.sqrt((expected_x - mean_x)**2 + (expected_y - mean_y)**2)
+        # quat = t.transform.rotation
+        # expected_theta = euler_from_quaternion([     
+        #     quat.x,
+        #     quat.y,
+        #     quat.z,
+        #     quat.w
+        # ])[2]
+        # x_error_msg = Float32()
+        # x_error_msg.data = expected_x - mean_x
+        # self.x_error_pub.publish(x_error_msg)
 
-        y_error_msg = Float32()
-        y_error_msg.data = expected_y - mean_y
-        self.y_error_pub.publish(y_error_msg)
+        # y_error_msg = Float32()
+        # y_error_msg.data = expected_y - mean_y
+        # self.y_error_pub.publish(y_error_msg)
 
-        dist_error_msg = Float32()
-        dist_error_msg.data = expected_dist
-        self.distance_error_pub.publish(dist_error_msg)
+        # dist_error_msg = Float32()
+        # dist_error_msg.data = expected_dist
+        # self.distance_error_pub.publish(dist_error_msg)
 
-        theta_error_msg = Float32()
-        theta_error_msg.data = expected_theta - mean_theta
-        self.theta_error_pub.publish(theta_error_msg)
+        # theta_error_msg = Float32()
+        # theta_error_msg.data = expected_theta - mean_theta
+        # self.theta_error_pub.publish(theta_error_msg)
 
         return mean_x, mean_y, mean_theta
 
@@ -293,20 +293,20 @@ class ParticleFilter(Node):
         self.particles[:, 2] = np.arctan2(np.sin(self.particles[:, 2]), np.cos(self.particles[:, 2]))
 
         # self.get_logger().info(f"Initialized {num_particles} particles around ({x:.2f}, {y:.2f}, {theta:.2f})")
-        self.avg_pose_history.poses = []
-        quaternions = np.array([quaternion_from_euler(0, 0, theta) for theta in self.particles[:, 2]])
+        # self.avg_pose_history.poses = []
+        # quaternions = np.array([quaternion_from_euler(0, 0, theta) for theta in self.particles[:, 2]])
 
-        # Create Pose messages using NumPy's efficient array handling
-        for (x, y), (qx, qy, qz, qw) in zip(self.particles[:, :2], quaternions):
-            pose = Pose()
-            pose.position.x = x
-            pose.position.y = y
-            pose.position.z = 0.0
-            pose.orientation.x = qx
-            pose.orientation.y = qy
-            pose.orientation.z = qz
-            pose.orientation.w = qw
-            self.avg_pose_history.poses.append(pose)
+        # # Create Pose messages using NumPy's efficient array handling
+        # for (x, y), (qx, qy, qz, qw) in zip(self.particles[:, :2], quaternions):
+        #     pose = Pose()
+        #     pose.position.x = x
+        #     pose.position.y = y
+        #     pose.position.z = 0.0
+        #     pose.orientation.x = qx
+        #     pose.orientation.y = qy
+        #     pose.orientation.z = qz
+        #     pose.orientation.w = qw
+        #     self.avg_pose_history.poses.append(pose)
     def publish_pose_estimate(self):
         """
         Publish pose estimate as transform and odometry message
@@ -343,18 +343,18 @@ class ParticleFilter(Node):
         self.odom_pub.publish(odom)
 
         # Publish average pose history for visualization
-        pose = Pose()
-        pose.position.x = x
-        pose.position.y = y
-        pose.position.z = 0.0
-        pose.orientation.x = quat[0]
-        pose.orientation.y = quat[1]
-        pose.orientation.z = quat[2]
-        pose.orientation.w = quat[3]
-        self.avg_pose_history.poses.append(pose)
-        self.get_logger().info(f"avg_pose_history len: {len(self.avg_pose_history.poses)}")
-        self.avg_pose_history.header.stamp = self.get_clock().now().to_msg()
-        self.pose_history_pub.publish(self.avg_pose_history)
+        # pose = Pose()
+        # pose.position.x = x
+        # pose.position.y = y
+        # pose.position.z = 0.0
+        # pose.orientation.x = quat[0]
+        # pose.orientation.y = quat[1]
+        # pose.orientation.z = quat[2]
+        # pose.orientation.w = quat[3]
+        # self.avg_pose_history.poses.append(pose)
+        # self.get_logger().info(f"avg_pose_history len: {len(self.avg_pose_history.poses)}")
+        # self.avg_pose_history.header.stamp = self.get_clock().now().to_msg()
+        # self.pose_history_pub.publish(self.avg_pose_history)
 
     def publish_particles(self):
         """
