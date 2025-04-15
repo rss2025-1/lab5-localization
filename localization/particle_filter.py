@@ -151,9 +151,9 @@ class ParticleFilter(Node):
             wz = odom_msg.twist.twist.angular.z
             
             # Scale by time
-            dx = vx * dt
-            dy = vy * dt
-            dtheta = wz * dt
+            dx = -(vx * dt)
+            dy = -(vy * dt)
+            dtheta = -(wz * dt)
             
             # Update particles using motion model
             self.particles = self.motion_model.evaluate(self.particles, [dx, dy, dtheta])

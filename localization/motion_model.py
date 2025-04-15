@@ -35,10 +35,10 @@ class MotionModel:
         particles = np.asarray(particles) # Ensure particles is a numpy array
 
         dx, dy, dtheta = odometry
-
-        sigma_x = 0.05  # TODO
-        sigma_y = 0.01 # TODO
-        sigma_theta = np.pi / 30  # TODO
+        
+        sigma_x = 0.05 # TODO
+        sigma_y = 0.05  # TODO
+        sigma_theta = np.deg2rad(20)  # TODO
 
         x = particles[:, 0]
         y = particles[:, 1]
