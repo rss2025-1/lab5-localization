@@ -187,7 +187,7 @@ class ParticleFilter(Node):
             else:
                 # If all weights are zero, reinitialize with uniform weights
                 self.weights = np.ones(self.num_particles) / self.num_particles
-                self.get_logger().warn("All particle weights are zero - reinitializing weights")
+                # self.get_logger().warn("All particle weights are zero - reinitializing weights")
                 
             # Resample particles
             self.resample_particles()
@@ -381,7 +381,7 @@ class ParticleFilter(Node):
             msg.poses.append(pose)
             
         self.particles_pub.publish(msg)
-        self.get_logger().info(f"Num particles:  {self.num_particles}")
+        # self.get_logger().info(f"Num particles:  {self.num_particles}")
 
 
 def main(args=None):
